@@ -70,6 +70,8 @@ type Prober struct {
 	roots    *x509.CertPool
 	now      func() time.Time
 	log      *slog.Logger
+	budget   *Budget
+	allow    *Allow
 }
 
 // Options configure a Prober.
@@ -82,11 +84,17 @@ type Options struct {
 	Now func() time.Time
 	// Logger defaults to slog.Default().
 	Logger *slog.Logger
+	// Budget caps probes per rolling minute across calls; nil means
+	// DefaultProbesPerMinute.
+	Budget *Budget
+	// Allow restricts targets; nil means no list (the metadata block still
+	// applies).
+	Allow *Allow
 }
 
 // New returns a Prober.
 func New(o Options) *Prober {
-	p := &Prober{resolver: o.Resolver, roots: o.Roots, now: o.Now, log: o.Logger}
+	p := &Prober{resolver: o.Resolver, roots: o.Roots, now: o.Now, log: o.Logger, budget: o.Budget, allow: o.Allow}
 	if p.resolver == nil {
 		p.resolver = net.DefaultResolver
 	}
@@ -95,6 +103,9 @@ func New(o Options) *Prober {
 	}
 	if p.log == nil {
 		p.log = slog.Default()
+	}
+	if p.budget == nil {
+		p.budget, _ = NewBudget(DefaultProbesPerMinute, p.now) // a valid constant cannot fail
 	}
 	return p
 }
@@ -224,6 +235,14 @@ func (p *Prober) Probe(ctx context.Context, t Target) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Policy, before any packet (DNS included): the allow list by name or
+	// literal, then one slot of the per-process budget.
+	if p.allow != nil && !p.allow.allowsHost(t.Host) {
+		return nil, fmt.Errorf("%w (%s)", ErrNotAllowed, t.Host)
+	}
+	if err := p.budget.Take(); err != nil {
+		return nil, err
+	}
 	ctx, cancel := context.WithTimeout(ctx, t.Timeout)
 	defer cancel()
 
@@ -231,12 +250,15 @@ func (p *Prober) Probe(ctx context.Context, t Target) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
+	if p.allow != nil && !p.allow.allowsDial(addr, addr) {
+		return nil, fmt.Errorf("%w (%s resolves to %s)", ErrNotAllowed, t.Host, addr)
+	}
 	res := &Result{Host: t.Host, Port: t.Port, SNI: t.SNI, IP: addr.String(), AddressClass: class, StartTLS: t.StartTLS}
 	if class != ClassPublic {
 		res.Notes = append(res.Notes, fmt.Sprintf("target address %s is %s (not on the public internet); make sure you are authorised to test it", addr, class))
 	}
 
-	d := net.Dialer{Timeout: t.Timeout, ControlContext: dialGuard}
+	d := net.Dialer{Timeout: t.Timeout, ControlContext: p.dialGuard(addr)}
 	p.log.DebugContext(ctx, "probe dial", slog.String("ip", addr.String()), slog.Int("port", t.Port), slog.String("starttls", t.StartTLS))
 	conn, err := d.DialContext(ctx, "tcp", net.JoinHostPort(addr.String(), strconv.Itoa(t.Port)))
 	if err != nil {
@@ -342,14 +364,25 @@ func (p *Prober) resolve(ctx context.Context, host string) (netip.Addr, string, 
 	return a, class, nil
 }
 
-// dialGuard re-checks the address at connect time (defence in depth).
-func dialGuard(_ context.Context, _, address string, _ syscall.RawConn) error {
-	ap, err := netip.ParseAddrPort(address)
-	if err != nil {
-		return fmt.Errorf("dial guard: %w", err)
+// dialGuard re-checks the address at connect time (defence in depth): the
+// metadata block always, then the allow list against the address actually
+// being dialled, which must also be the address vetted for this call.
+func (p *Prober) dialGuard(vetted netip.Addr) func(context.Context, string, string, syscall.RawConn) error {
+	return func(_ context.Context, _, address string, _ syscall.RawConn) error {
+		ap, err := netip.ParseAddrPort(address)
+		if err != nil {
+			return fmt.Errorf("dial guard: %w", err)
+		}
+		dialled := ap.Addr().Unmap()
+		if _, forbidden := ClassifyAddr(dialled); forbidden {
+			return ErrForbiddenTarget
+		}
+		if dialled != vetted {
+			return fmt.Errorf("dial guard: dialling %s, but %s was vetted", dialled, vetted)
+		}
+		if p.allow != nil && !p.allow.allowsDial(dialled, vetted) {
+			return fmt.Errorf("%w (dial to %s)", ErrNotAllowed, dialled)
+		}
+		return nil
 	}
-	if _, forbidden := ClassifyAddr(ap.Addr()); forbidden {
-		return ErrForbiddenTarget
-	}
-	return nil
 }

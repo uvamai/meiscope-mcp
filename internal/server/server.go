@@ -82,7 +82,8 @@ func New(cfg Config) *mcp.Server {
 		Description: "Make ONE TLS handshake to a single host and port (default 443), stopping as soon as the server certificate chain arrives, " +
 			"and report the chain, negotiated TLS version, cipher, ALPN, OCSP stapling and verification against the system roots with the failure reason. " +
 			"Supports STARTTLS for SMTP, IMAP, POP3 and LDAP (auto-selected on ports 25, 587, 143, 110, 389). Never authenticates or sends application data. " +
-			"Refuses link-local and cloud metadata addresses. Only probe systems you are authorised to test.",
+			"Refuses link-local and cloud metadata addresses. Limited per process (default 30 probes per minute) and, when the operator sets one, to an allow list of domains and networks. " +
+			"Legacy TLS 1.0/1.1 and RSA key exchange are inspected and reported in session_findings. Only probe systems you are authorised to test.",
 		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, IdempotentHint: true, OpenWorldHint: &open},
 	}, run(h, "inspect_tls_endpoint", h.inspectEndpoint))
 	mcp.AddTool(s, &mcp.Tool{

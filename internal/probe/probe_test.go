@@ -403,13 +403,19 @@ func TestClassifyAddr(t *testing.T) {
 }
 
 func TestDialGuard(t *testing.T) {
-	if err := dialGuard(context.Background(), "tcp", "169.254.169.254:80", nil); !errors.Is(err, ErrForbiddenTarget) {
+	p := New(Options{})
+	meta := netip.MustParseAddr("169.254.169.254")
+	loop := netip.MustParseAddr("127.0.0.1")
+	if err := p.dialGuard(meta)(context.Background(), "tcp", "169.254.169.254:80", nil); !errors.Is(err, ErrForbiddenTarget) {
 		t.Fatalf("err = %v", err)
 	}
-	if err := dialGuard(context.Background(), "tcp", "127.0.0.1:80", nil); err != nil {
+	if err := p.dialGuard(loop)(context.Background(), "tcp", "127.0.0.1:80", nil); err != nil {
 		t.Fatalf("err = %v", err)
 	}
-	if err := dialGuard(context.Background(), "tcp", "bogus", nil); err == nil {
+	if err := p.dialGuard(loop)(context.Background(), "tcp", "10.0.0.1:80", nil); err == nil {
+		t.Fatal("dial to an address other than the vetted one must be refused")
+	}
+	if err := p.dialGuard(loop)(context.Background(), "tcp", "bogus", nil); err == nil {
 		t.Fatal("want parse error")
 	}
 }
