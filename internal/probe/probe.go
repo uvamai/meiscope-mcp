@@ -26,6 +26,7 @@ import (
 	"net"
 	"net/netip"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -112,8 +113,53 @@ type Result struct {
 	OCSPStapled   bool
 	Chain         []*x509.Certificate
 	Verification  Verification
+	Findings      []Finding
 	Notes         []string
 	ObservedAtUTC time.Time
+}
+
+// Finding is a weakness of the negotiated session. It has the same shape as
+// the certificate weaknesses reported by inspect_certificate.
+type Finding struct {
+	Code     string `json:"code"`
+	Severity string `json:"severity"`
+	Detail   string `json:"detail"`
+}
+
+// Session finding codes.
+const (
+	FindingLegacyTLS10    = "legacy_tls_1_0"
+	FindingLegacyTLS11    = "legacy_tls_1_1"
+	FindingRSAKeyExchange = "rsa_key_exchange"
+)
+
+// inspectionCipherSuites is every TLS 1.0-1.2 suite Go implements, secure
+// ones first, so the server's choice reveals what it actually accepts.
+// TLS 1.3 suites are not configurable and are always offered.
+func inspectionCipherSuites() []uint16 {
+	var ids []uint16
+	for _, s := range tls.CipherSuites() {
+		ids = append(ids, s.ID)
+	}
+	for _, s := range tls.InsecureCipherSuites() {
+		ids = append(ids, s.ID)
+	}
+	return ids
+}
+
+// sessionFindings reports a legacy protocol version and RSA key exchange.
+func sessionFindings(version, suite uint16) []Finding {
+	var f []Finding
+	switch version {
+	case tls.VersionTLS10:
+		f = append(f, Finding{FindingLegacyTLS10, "high", "The server negotiated TLS 1.0, deprecated by RFC 8996 and refused by current browsers."})
+	case tls.VersionTLS11:
+		f = append(f, Finding{FindingLegacyTLS11, "high", "The server negotiated TLS 1.1, deprecated by RFC 8996 and refused by current browsers."})
+	}
+	if version <= tls.VersionTLS12 && strings.HasPrefix(tls.CipherSuiteName(suite), "TLS_RSA_") {
+		f = append(f, Finding{FindingRSAKeyExchange, "warning", "The server chose RSA key exchange (" + tls.CipherSuiteName(suite) + "): no forward secrecy, so a later key compromise exposes recorded sessions."})
+	}
+	return f
 }
 
 // Validate checks t and fills defaults. It never touches the network.
@@ -214,12 +260,27 @@ func (p *Prober) Probe(ctx context.Context, t Target) (*Result, error) {
 		}
 	}
 	var captured *tls.ConnectionState
+	// This connection only inspects; it never carries data. It accepts TLS
+	// 1.0/1.1 and every cipher suite Go implements (including RSA key
+	// exchange) so certificates on legacy servers can still be captured; the
+	// weak protocol is reported as a finding, not treated as a failure.
+	//
+	// Nothing secret is sent on it. crypto/tls calls VerifyConnection from
+	// verifyServerCertificate, as soon as the server's Certificate message
+	// arrives and before the client builds its key exchange (TLS <= 1.2) or
+	// any further handshake message, and the abort below ends the handshake
+	// there. With RSA key exchange no pre-master secret is ever generated,
+	// let alone encrypted to the server's key; no client certificate, Finished
+	// message, application data or credential follows. Sessions are never
+	// cached, so the resumption path (which verifies later) cannot run.
+	// Tests assert on the wire that only a ClientHello and an alert are sent.
 	cfg := &tls.Config{
 		ServerName: serverName,
 		// The chain is verified explicitly below, against the system roots,
 		// so that invalid chains can still be inspected and explained.
-		InsecureSkipVerify: true, // #nosec G402 -- verification is performed by verifyChain; this is an inspection tool.
-		MinVersion:         tls.VersionTLS12,
+		InsecureSkipVerify: true,             // #nosec G402 -- verification is performed by verifyChain; this is an inspection tool.
+		MinVersion:         tls.VersionTLS10, // #nosec G402 -- legacy servers are inspected and reported, never used for data.
+		CipherSuites:       inspectionCipherSuites(),
 		GetClientCertificate: func(*tls.CertificateRequestInfo) (*tls.Certificate, error) {
 			return &tls.Certificate{}, nil // never present a client certificate
 		},
@@ -245,6 +306,7 @@ func (p *Prober) Probe(ctx context.Context, t Target) (*Result, error) {
 	res.ALPN = captured.NegotiatedProtocol
 	res.OCSPStapled = len(captured.OCSPResponse) > 0
 	res.Chain = captured.PeerCertificates
+	res.Findings = sessionFindings(captured.Version, captured.CipherSuite)
 	verifyName := t.SNI
 	if verifyName == "" {
 		verifyName = t.Host

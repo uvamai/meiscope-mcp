@@ -215,13 +215,14 @@ type InspectEndpointOutput struct {
 	Target       EndpointTarget         `json:"target"`
 	ObservedAt   string                 `json:"observed_at"`
 	TLS          TLSInfo                `json:"tls"`
+	Findings     []probe.Finding        `json:"session_findings" jsonschema:"weaknesses of the negotiated session: legacy_tls_1_0, legacy_tls_1_1, rsa_key_exchange; certificate weaknesses are under served_chain"`
 	Verification probe.Verification     `json:"verification"`
 	Chain        []certinfo.Certificate `json:"served_chain"`
 	Notes        []string               `json:"notes,omitempty"`
 	Safety       string                 `json:"probe_behaviour"`
 }
 
-const probeBehaviour = "One TCP connection and one TLS handshake, abandoned right after the server's Certificate message; no client certificate, credentials or application data were sent. The chain is what the server presented; possession of its private key was not checked."
+const probeBehaviour = "One TCP connection and one TLS handshake, abandoned right after the server's Certificate message and before any key exchange; no client certificate, key exchange, credentials or application data were sent. The chain is what the server presented; possession of its private key was not checked."
 
 func (h *handlers) probeEndpoint(ctx context.Context, in EndpointInput) (InspectEndpointOutput, *probe.Result, error) {
 	r, err := h.prober.Probe(ctx, in.target())
@@ -233,6 +234,7 @@ func (h *handlers) probeEndpoint(ctx context.Context, in EndpointInput) (Inspect
 		Target:       EndpointTarget{Host: r.Host, Port: r.Port, SNI: r.SNI, IP: r.IP, AddressClass: r.AddressClass, StartTLS: r.StartTLS},
 		ObservedAt:   r.ObservedAtUTC.Format(time.RFC3339),
 		TLS:          TLSInfo{Version: r.TLSVersion, CipherSuite: r.CipherSuite, ALPN: untrusted.Clean(r.ALPN), OCSPStapled: r.OCSPStapled},
+		Findings:     append([]probe.Finding{}, r.Findings...),
 		Verification: r.Verification,
 		Notes:        r.Notes,
 		Safety:       probeBehaviour,
