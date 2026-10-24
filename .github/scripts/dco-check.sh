@@ -8,9 +8,12 @@ set -euo pipefail
 
 base="${1:?base commit}"
 head="${2:?head commit}"
+# A plain assignment, not "for c in $(...)", so a bad range fails the check
+# (set -e) instead of silently checking zero commits.
+commits="$(git rev-list --no-merges "$base..$head")"
 fail=0
 count=0
-for c in $(git rev-list --no-merges "$base..$head"); do
+for c in $commits; do
   count=$((count + 1))
   author="$(git log -1 --format='%an <%ae>' "$c")"
   signoffs="$(git log -1 --format='%(trailers:key=Signed-off-by,valueonly)' "$c" | sed 's/[[:space:]]*$//')"
