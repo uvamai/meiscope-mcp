@@ -21,3 +21,6 @@ coverage.*
 .vscode/
 .DS_Store
 Thumbs.db
+
+# Release dry-run output (task release:local)
+/release/

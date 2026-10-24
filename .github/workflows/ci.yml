@@ -1,4 +1,4 @@
-# CI for meiscope-mcp: lint, test (coverage gate), cross-build.
+# CI for meiscope-mcp: DCO sign-off, lint, test (coverage gate), cross-build.
 # Actions are pinned by full commit SHA, the same pins as the Meiscope core
 # repository (ADR-0015); the tag is in the comment.
 name: ci
@@ -19,9 +19,24 @@ concurrency:
 env:
   GOTOOLCHAIN: local
   GO_VERSION: "1.27.3"
-  COVERAGE_MIN: "85"
+  COVERAGE_MIN: "90"
 
 jobs:
+  dco:
+    name: DCO sign-off
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Every commit carries Signed-off-by for its author
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: .github/scripts/dco-check.sh "$BASE_SHA" "$HEAD_SHA"
+
   lint:
     runs-on: ubuntu-24.04
     steps:
@@ -80,6 +95,7 @@ jobs:
           - { goos: linux, goarch: arm64 }
           - { goos: darwin, goarch: arm64 }
           - { goos: windows, goarch: amd64, ext: .exe }
+          - { goos: windows, goarch: arm64, ext: .exe }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
