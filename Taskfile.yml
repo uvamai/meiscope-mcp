@@ -1,0 +1,80 @@
+# Task runner for meiscope-mcp (https://taskfile.dev, task v3.54.0).
+version: "3"
+
+vars:
+  BINARY: meiscope-mcp
+  PKG: github.com/uvamai/meiscope-mcp
+  VERSION:
+    sh: 'v="$(git describe --tags --abbrev=0 2>/dev/null)" && echo "${v#v}" || echo 0.0.0-dev'
+  COMMIT:
+    sh: git rev-parse --short HEAD 2>/dev/null || echo none
+  LDFLAGS: -s -w -X {{.PKG}}/internal/version.Version={{.VERSION}} -X {{.PKG}}/internal/version.Commit={{.COMMIT}}
+  # -race needs cgo; it runs in CI (Linux) and is skipped where no C compiler exists.
+  RACE:
+    sh: '[ "$(go env CGO_ENABLED)" = "1" ] && echo -race || echo'
+  COVERAGE_MIN: "85"
+
+tasks:
+  default:
+    cmds:
+      - task --list
+
+  build:
+    desc: Build linux/amd64, linux/arm64, darwin/arm64 and windows/amd64 into bin/<os>_<arch>/, plus a host binary in bin/
+    deps:
+      - { task: build:target, vars: { GOOS: linux, GOARCH: amd64 } }
+      - { task: build:target, vars: { GOOS: linux, GOARCH: arm64 } }
+      - { task: build:target, vars: { GOOS: darwin, GOARCH: arm64 } }
+      - { task: build:target, vars: { GOOS: windows, GOARCH: amd64 } }
+      - build:host
+
+  build:target:
+    internal: true
+    vars:
+      EXT: '{{if eq .GOOS "windows"}}.exe{{end}}'
+    env:
+      GOOS: "{{.GOOS}}"
+      GOARCH: "{{.GOARCH}}"
+      CGO_ENABLED: "0"
+    cmds:
+      - go build -trimpath -ldflags "{{.LDFLAGS}}" -o bin/{{.GOOS}}_{{.GOARCH}}/{{.BINARY}}{{.EXT}} ./cmd/{{.BINARY}}
+
+  build:host:
+    desc: Build for the current machine into bin/meiscope-mcp[.exe]
+    env:
+      CGO_ENABLED: "0"
+    cmds:
+      - go build -trimpath -ldflags "{{.LDFLAGS}}" -o bin/{{.BINARY}}{{exeExt}} ./cmd/{{.BINARY}}
+
+  test:
+    desc: Unit, protocol and probe tests (with -race where cgo is available) and the coverage gate
+    cmds:
+      - go test {{.RACE}} -coverpkg=./... -coverprofile=coverage.out ./...
+      - cmd: |
+          total="$(go tool cover -func=coverage.out | awk '/^total:/ { sub("%", "", $3); print $3 }')"
+          echo "total coverage: ${total}% (min {{.COVERAGE_MIN}}%)"
+          awk -v g="$total" -v m="{{.COVERAGE_MIN}}" 'BEGIN { exit (g < m) }'
+
+  fuzz:
+    desc: Fuzz the certificate input parser (FUZZTIME, default 60s)
+    cmds:
+      - go test ./internal/certinput -run '^$' -fuzz FuzzParseBytes -fuzztime {{.FUZZTIME | default "60s"}}
+
+  examples:
+    desc: Regenerate the README example outputs into .examples/ from local fixtures
+    cmds:
+      - MEISCOPE_EXAMPLES_DIR="$PWD/.examples" go test ./internal/server -run TestWriteREADMEExamples -count=1
+
+  lint:
+    desc: go vet, golangci-lint and gofumpt
+    cmds:
+      - go vet ./...
+      - golangci-lint run ./...
+      - cmd: |
+          out="$(gofumpt -l .)"
+          if [ -n "$out" ]; then echo "gofumpt would reformat:"; echo "$out"; exit 1; fi
+
+  clean:
+    desc: Remove build output
+    cmds:
+      - rm -rf bin dist coverage.out

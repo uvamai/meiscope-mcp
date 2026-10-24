@@ -1,0 +1,57 @@
+# golangci-lint v2 configuration, modelled on the Meiscope core repository
+# (engineering-standards §2).
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  default: none
+  enable:
+    - bodyclose
+    - depguard
+    - errcheck
+    - exhaustive
+    - gocritic
+    - gosec
+    - govet
+    - revive
+    - sqlclosecheck
+    - staticcheck
+  settings:
+    exhaustive:
+      default-signifies-exhaustive: false
+    depguard:
+      rules:
+        # Licence boundary (ADR-0002): this Apache-2.0 project never imports
+        # the private Meiscope core.
+        never-import-private-core:
+          files:
+            - $all
+          deny:
+            - pkg: github.com/uvamai/meiscope$
+              desc: the Meiscope core is proprietary; meiscope-mcp is written independently (ADR-0002)
+            - pkg: github.com/uvamai/meiscope/
+              desc: the Meiscope core is proprietary; meiscope-mcp is written independently (ADR-0002)
+        # Only the test helper may import the testing package outside tests.
+        testpki-only-in-tests:
+          files:
+            - $all
+            - "!$test"
+            - "!**/internal/testpki/**"
+          deny:
+            - pkg: github.com/uvamai/meiscope-mcp/internal/testpki
+              desc: testpki generates throwaway keys and is for tests only
+  exclusions:
+    generated: lax
+    presets:
+      - std-error-handling
+
+formatters:
+  enable:
+    - gofumpt
+  settings:
+    gofumpt:
+      module-path: github.com/uvamai/meiscope-mcp
+  exclusions:
+    generated: lax
