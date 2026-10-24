@@ -1,8 +1,27 @@
 # Contributing to meiscope-mcp
 
 Thank you for helping. meiscope-mcp is an open-source MCP server from
-UVAMAI, licensed under Apache-2.0. Unless you state otherwise, contributions
-are made under the same licence (Apache-2.0, section 5).
+UVAMAI, licensed under Apache-2.0. Contributions are made under the same
+licence (Apache-2.0, section 5) and certified with a DCO sign-off.
+
+## Developer Certificate of Origin (DCO)
+
+Every commit must be signed off. By adding a `Signed-off-by:` line you
+certify the [Developer Certificate of Origin 1.1](https://developercertificate.org/):
+that you wrote the change or otherwise have the right to submit it under
+this project's licence. There is no separate contributor licence agreement.
+
+```sh
+git commit -s -m "fix(probe): ..."   # adds: Signed-off-by: Your Name <you@example.com>
+```
+
+The sign-off must match the commit author's name and email exactly. CI's
+**DCO sign-off** job checks every commit in a pull request
+(`.github/scripts/dco-check.sh`). To fix a branch that is missing sign-offs:
+
+```sh
+git rebase --signoff origin/main   # then force-push your branch
+```
 
 ## Before you start
 
@@ -13,8 +32,8 @@ are made under the same licence (Apache-2.0, section 5).
 
 ```sh
 export GOTOOLCHAIN=local   # Go 1.27.3, pinned in go.mod
-task build                 # linux/amd64, linux/arm64, darwin/arm64, windows/amd64
-task test                  # unit, protocol and probe tests + 85 % coverage gate
+task build                 # linux and windows (amd64, arm64), darwin/arm64
+task test                  # unit, protocol and probe tests + 90 % coverage gate
 task lint                  # go vet, golangci-lint v2.15.0, gofumpt v0.12.0
 task fuzz                  # fuzz the certificate parser
 task examples              # regenerate README example outputs from local fixtures
