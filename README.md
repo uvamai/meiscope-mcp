@@ -332,7 +332,7 @@ Untrusted content:
   are capped at 100 per certificate and certificates at 20 per input, and a
   whole result is capped at 1 MiB.
 - Every result carries `"untrusted_content_notice"` and the MCP `_meta` keys
-  `uvamai.com/untrusted_content: true` and `uvamai.com/content_origin`
+  `uvam.ai/untrusted_content: true` and `uvam.ai/content_origin`
   (`inline`, `file` or `remote`), so clients and agents can tell that the
   data must not be followed as instructions.
 - Private key blocks found in an input are skipped and never echoed. File
