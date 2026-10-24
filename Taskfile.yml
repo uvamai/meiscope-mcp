@@ -74,8 +74,10 @@ tasks:
       - go run ./tools/release -version {{.VERSION}} -bin bin -out release
       - for t in linux_amd64 linux_arm64 darwin_arm64; do cp "bin/$t/{{.BINARY}}" "release/{{.BINARY}}_$t"; done
       - for t in windows_amd64 windows_arm64; do cp "bin/$t/{{.BINARY}}.exe" "release/{{.BINARY}}_$t.exe"; done
-      - syft scan dir:. -o cyclonedx-json=release/{{.BINARY}}.cdx.json
-      - cd release && sha256sum * > SHA256SUMS
+      - syft scan dir:. --source-name {{.BINARY}} --source-version {{.VERSION}} -o cyclonedx-json=release/{{.BINARY}}.cdx.json
+      # Written outside release/ and moved in, so the glob never lists SHA256SUMS itself
+      # (shells differ on whether the redirect target exists when * expands).
+      - cd release && sha256sum * > ../SHA256SUMS && mv ../SHA256SUMS SHA256SUMS
 
   server-json:
     desc: Regenerate the committed server.json template for VERSION (placeholder hashes)
