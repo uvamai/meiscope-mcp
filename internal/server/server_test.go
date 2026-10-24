@@ -159,7 +159,7 @@ func TestInspectCertificate(t *testing.T) {
 	if res.IsError {
 		t.Fatal(errText(res))
 	}
-	if res.Meta[untrusted.MetaKey] != true || res.Meta["uvam.ai/content_origin"] != "inline" {
+	if res.Meta[untrusted.MetaKey] != true || res.Meta["meiscope.com/content_origin"] != "inline" {
 		t.Fatalf("meta %v", res.Meta)
 	}
 	if out["certificate_count"].(float64) != 2 || out["untrusted_content_notice"] != untrusted.Notice {
@@ -174,7 +174,7 @@ func TestInspectCertificate(t *testing.T) {
 		t.Fatal(err)
 	}
 	res, out = call(t, cs, "inspect_certificate", map[string]any{"input": path, "input_type": "file"})
-	if res.IsError || res.Meta["uvam.ai/content_origin"] != "file" || out["format"] != "der" {
+	if res.IsError || res.Meta["meiscope.com/content_origin"] != "file" || out["format"] != "der" {
 		t.Fatalf("file: %v %v", errText(res), out)
 	}
 
@@ -196,7 +196,7 @@ func TestInspectTLSEndpoint(t *testing.T) {
 	if res.IsError {
 		t.Fatal(errText(res))
 	}
-	if res.Meta["uvam.ai/content_origin"] != "remote" {
+	if res.Meta["meiscope.com/content_origin"] != "remote" {
 		t.Fatalf("meta %v", res.Meta)
 	}
 	v := out["verification"].(map[string]any)
@@ -228,7 +228,7 @@ func TestAssessExpiryRisk(t *testing.T) {
 		t.Fatal(errText(res))
 	}
 	as := out["assessments"].([]any)
-	if len(as) != 3 || res.Meta["uvam.ai/content_origin"] != "remote" {
+	if len(as) != 3 || res.Meta["meiscope.com/content_origin"] != "remote" {
 		t.Fatalf("assessments %d meta %v", len(as), res.Meta)
 	}
 	first := as[0].(map[string]any)
