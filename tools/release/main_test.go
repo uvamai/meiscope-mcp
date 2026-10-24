@@ -162,7 +162,7 @@ func TestCommittedServerJSONIsCurrent(t *testing.T) {
 	if err := run([]string{"-version", doc.Version, "-placeholder", "-server-json", out}, io.Discard); err != nil {
 		t.Fatal(err)
 	}
-	want, _ := os.ReadFile(out)       //nolint:gosec // test temp path
+	want, _ := os.ReadFile(out)      //nolint:gosec // test temp path
 	got, _ := os.ReadFile(committed) //nolint:gosec // repository file
 	if !bytes.Equal(got, want) {
 		t.Fatalf("server.json is stale; run: go run ./tools/release -version %s -placeholder -server-json server.json", doc.Version)

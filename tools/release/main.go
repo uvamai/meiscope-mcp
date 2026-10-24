@@ -44,9 +44,11 @@ const (
 type target struct{ goos, goarch string }
 
 var targets = []target{
-	{"linux", "amd64"}, {"linux", "arm64"},
+	{"linux", "amd64"},
+	{"linux", "arm64"},
 	{"darwin", "arm64"},
-	{"windows", "amd64"}, {"windows", "arm64"},
+	{"windows", "amd64"},
+	{"windows", "arm64"},
 }
 
 func (t target) exe() string {
